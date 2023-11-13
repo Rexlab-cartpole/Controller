@@ -53,7 +53,8 @@ def cartpole_safe_read(local_sp):
             encoderData = encoderData.decode()
             encoderData = encoderData.split(",")
             if len(encoderData) - 1 == len(cartpole_encoder_data_fields): # account for the \r\n 
-                return encoderData[:-1]
+                encoderDataConverted = [float(x) for x in encoderData[:-1]]
+                return encoderDataConverted
         except Exception as e:
             timeout -= 1
 
