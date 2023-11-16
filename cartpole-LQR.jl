@@ -77,7 +77,7 @@ nu = 1 # number of controls
 ##
 
 # Cost weights
-# TODO: tune these!
+# TODO: tune these! (cart position, pole angle, cart linear velocity, pole angular velocity)
 Q = collect(Diagonal([1; 1; 1; 1]));
 R = 0.1;
 
