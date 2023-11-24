@@ -4,20 +4,20 @@ Pkg.instantiate()
 
 ##
 
+using RobotZoo:Cartpole
+using TrajOptPlots
+using ControlSystems
 using LinearAlgebra
 using ForwardDiff
-using Plots
-using Random 
-using Printf
-# using MeshCat
-using TrajOptPlots
-using RobotZoo:Cartpole
 using StaticArrays
-# using GeometryTypes
-using ControlSystems
-# using ColorTypes
+using Random
 
 using Plots
+using Printf
+
+# using MeshCat
+# using GeometryTypes
+# using ColorTypes
 
 ##
 
@@ -31,6 +31,19 @@ mp = 0.2 # mass of the pole
 g = 9.81
 
 h = 1/100
+
+##
+
+angular_enc_cpr = 600
+angle_vel_filter = 0.95
+
+# Quantize the real state based on what the sensor would read
+function sensor_output(x, prev_x, sensor_angle_vel) # state is position, angle, linear vel, angular vel
+    x[2] = round(Int, angular_enc_cpr * x[2])/angular_enc_cpr
+    new_sensor_angle_vel = angle_vel_filter * (x[2] - prev_x[2])/h + (1 - angle_vel_filter) * sensor_angle_vel
+    x[4] = new_sensor_angle_vel
+    return x, new_sensor_angle_vel
+end
 
 ##
 
@@ -61,8 +74,6 @@ end
 # Goal state
 xg = [0; 0; 0; 0];
 
-##
-
 # Linearized state and control matrices
 A = ForwardDiff.jacobian(dx->cartpole_rk4(dx, 0), xg)
 B = ForwardDiff.derivative(du->cartpole_rk4(xg, du), 0)
@@ -74,19 +85,13 @@ display(B)
 nx = 4 # number of states
 nu = 1 # number of controls
 
-##
-
 # Cost weights
 # TODO: tune these! (cart position, pole angle, cart linear velocity, pole angular velocity)
 Q = collect(Diagonal([1; 1; 1; 1]));
 R = 0.1;
 
-##
-
 # Might need to invert some of the gains depending on rotation / translation directions of the joints
 K = dlqr(A,B,Q,R)
-
-# K[1] = 0
 
 ##
 
@@ -94,11 +99,16 @@ control_lim = 5
 
 Nsim = 500
 x_lqr = [zeros(nx) for i = 1:Nsim]
+x_lqr_prev = zeros(nx)
 x_lqr[1] = [0; .2; 0; 0]
 u_lqr = zeros(Nsim-1)
 
+sensor_angle_vel = 0
+
 for k = 1:Nsim-1
-    u = -K*(x_lqr[k] - xg)
+    x_lqr_sensor, sensor_angle_vel = sensor_output(x_lqr[k], x_lqr_prev, sensor_angle_vel)
+    u = -K*(x_lqr_sensor - xg)
+    x_lqr_prev = x_lqr[k]
     u_lqr[k] = min(control_lim, max(u[1], -control_lim))
     x_lqr[k+1] = cartpole_rk4(x_lqr[k], u_lqr[k])
 end

@@ -19,7 +19,7 @@ using Printf
 # TODO: measure mc mp and l
 mc = 0.1 # mass of the cart in kg (10)
 mp = 0.2 # mass of the pole (point mass at the end) in kg
-l = 0.5  # half the length of the pole in meters
+l = 0.5 
 g = 9.81 # gravity m/s^2
 
 a = Cartpole(mc, mp, l, g)
