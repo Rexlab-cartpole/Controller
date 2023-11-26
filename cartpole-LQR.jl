@@ -34,19 +34,6 @@ h = 1/100
 
 ##
 
-angular_enc_cpr = 600
-angle_vel_filter = 0.95
-
-# Quantize the real state based on what the sensor would read
-function sensor_output(x, prev_x, sensor_angle_vel) # state is position, angle, linear vel, angular vel
-    x[2] = round(Int, angular_enc_cpr * x[2])/angular_enc_cpr
-    new_sensor_angle_vel = angle_vel_filter * (x[2] - prev_x[2])/h + (1 - angle_vel_filter) * sensor_angle_vel
-    x[4] = new_sensor_angle_vel
-    return x, new_sensor_angle_vel
-end
-
-##
-
 function cartpole_dynamics(x,u)
     r = x[1] # cart position
     θ = x[2] # pole angle
@@ -72,7 +59,7 @@ end
 ##
 
 # Goal state
-xg = [0; 0; 0; 0];
+xg = [0; 0; 0; 0]; # position, angle, linear vel, angular vel
 
 # Linearized state and control matrices
 A = ForwardDiff.jacobian(dx->cartpole_rk4(dx, 0), xg)
@@ -82,6 +69,7 @@ display(B)
 
 ##
 
+nz = 2 # number of measured states
 nx = 4 # number of states
 nu = 1 # number of controls
 
@@ -95,23 +83,107 @@ K = dlqr(A,B,Q,R)
 
 ##
 
+linear_enc_cpr = 600
+angular_enc_cpr = 600
+linear_vel_factor = 0.95
+angle_vel_factor = 0.95
+
+# Quantize the real state based on what the sensors would read
+function measure_state(x) # sensor state is position, angle
+    x_meas = [0.0;0.0]
+    x_meas[1] = round(Int, linear_enc_cpr * x[1])/linear_enc_cpr
+    x_meas[2] = round(Int, angular_enc_cpr * x[2])/angular_enc_cpr
+    return x_meas
+end
+
+function estimate_state_basic_filter(x_meas, prev_x_meas, running_est_linear_vel, running_est_angle_vel)
+    new_est_linear_vel = linear_vel_factor * (x_meas[1] - prev_x_meas[1])/h + (1 - linear_vel_factor) * running_est_linear_vel
+    new_est_angle_vel = angle_vel_factor * (x_meas[2] - prev_x_meas[2])/h + (1 - angle_vel_factor) * running_est_angle_vel
+    return [x_meas; new_est_linear_vel; new_est_angle_vel] # output is (estimated) [position, angle, linear vel, angular vel]
+end
+
+# Observation matrix H (also commonly written as C)
+H = [1 0 0 0; 0 1 0 0] # Only position and angle are observable
+meas_noise_cov = diagm([1; 1]) # nz x nz (where nz = length of measurement vector - 2 in this case)
+process_noise_cov = diagm([1; 1; 1; 1]) # nx x nx
+
+function kalman_filter(control_input, x_meas, x_pred_prev, est_cov_prev)
+    # x_meas: nz x 1 (2x1)
+    # est_cov_prev: nx x nx (4x4)
+    # x_pred_prev: nx x 1 (4x1)
+    # H: nz x nx (2x4)
+    # meas_noise_cov: nz x nz (2x2)
+    # process_noise_cov: nx x nx (4x4)
+    # A: nx x nx (4x4)
+    # B: nx x nu (4x1)
+
+
+    # Update step
+
+    # Compute Kalman gain
+    Kn = est_cov_prev*H' * inv(H*est_cov_prev*H' + meas_noise_cov)
+
+    # Update estimate with measurement
+    x = x_pred_prev + Kn * (x_meas - H*x_pred_prev)
+
+    # Update estimate uncertainty
+    est_cov = (I - Kn*H) * est_cov_prev * (I - Kn*H)' + Kn*meas_noise_cov*Kn'
+
+
+    # Predict step
+
+    # Extrapolate state
+    x_pred = A*x + B*control_input
+
+    # Extrapolate uncertainty
+    est_cov_pred = A*est_cov*A' + Q
+
+    return x, x_pred, est_cov_pred
+end
+
+##
+
 control_lim = 5
 
 Nsim = 500
 x_lqr = [zeros(nx) for i = 1:Nsim]
-x_lqr_prev = zeros(nx)
 x_lqr[1] = [0; .2; 0; 0]
 u_lqr = zeros(Nsim-1)
 
-sensor_angle_vel = 0
+# Variables for estimate_state_basic_filter
+running_est_linear_vel = 0
+running_est_angle_vel = 0
+measurements_prev = zeros(nz)
+
+# Variables for Kalman filter
+est_cov_prev = diagm([100; 100; 100; 100])
+measurements = zeros(nz)
+x_pred_prev = x_lqr[1]
+x_est = x_pred_prev
+
+use_kf = true
 
 for k = 1:Nsim-1
-    x_lqr_sensor, sensor_angle_vel = sensor_output(x_lqr[k], x_lqr_prev, sensor_angle_vel)
-    u = -K*(x_lqr_sensor - xg)
-    x_lqr_prev = x_lqr[k]
+    # Measure new state
+    measurements = measure_state(x_lqr[k][1:2]) # Outputs length 2 vector of sensor measurements
+
+    # Do state estimate
+    if use_kf
+        if k > 1
+            x_est, x_pred_prev, est_cov_prev = kalman_filter(u_lqr[k-1], measurements, x_pred_prev, est_cov_prev)
+        end
+    else
+        x_est = estimate_state_basic_filter(measurements, measurements_prev, running_est_linear_vel, running_est_angle_vel) # Outputs length nx vector state estimate
+        measurements_prev = measurements
+        running_est_linear_vel = x_est[3]
+        running_est_angle_vel = x_est[4]
+    end
+
+    # Do control
+    u = -K*(x_est - xg)
     u_lqr[k] = min(control_lim, max(u[1], -control_lim))
     x_lqr[k+1] = cartpole_rk4(x_lqr[k], u_lqr[k])
 end
 
-plot(hcat(x_lqr...)', label=["x" "θ" "v" "θv"])
+plot(hcat(x_lqr...)', label=["x" "θ" "xv" "θv"])
 plot!(hcat(u_lqr...)', label="u")
