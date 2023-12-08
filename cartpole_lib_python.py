@@ -3,7 +3,7 @@ import numpy as np
 import time
 
 ##### CONSTANTS #####
-SHOULDER_CPR = 2400
+SHOULDER_CPR = 4096
 LINEAR_CPR = 2400
 
 SHOULDER_TO_ANGLE_RATIO = (1/SHOULDER_CPR) * (2*np.pi)
@@ -52,7 +52,7 @@ def get_rail_encoder_pos():
     
     last_encoder_val_rail = encoder_val
 
-    rail_encoder += diff 
+    rail_encoder -= diff 
 
     return (rail_encoder * LINEAR_TO_ANGLE_RATIO) + LINEAR_OFFSET
 
@@ -111,6 +111,14 @@ def get_errors():
 
     return odrive.utils.dump_errors(odrv0)
 
+def get_measurement():
+    global odrv0
+    
+    shoulder_pos = get_shoulder_encoder_pos()
+    linear_pos = get_rail_encoder_pos()
+    
+    return np.array([linear_pos, shoulder_pos])
+
 def get_state():
     global odrv0, last_shoulder_pos, last_linear_pos, last_shoulder_vel, last_linear_vel, last_state_time
 
@@ -121,7 +129,9 @@ def get_state():
 
     enc_capture_time = (enc_end + enc_start) / 2
     elapsed_time = time.time() - last_state_time
-
+    if elapsed_time == 0:
+        elapsed_time = .01
+        
     shoulder_velocity = (shoulder_pos - last_shoulder_pos) / elapsed_time
     shoulder_velocity = (shoulder_velocity * SHOULDER_VEL_LPF) + (last_shoulder_vel * (1 - SHOULDER_VEL_LPF))
 
@@ -144,7 +154,7 @@ def busy_sleep(duration, loop_start = None, get_now=time.time):
     if loop_start is None:
         end = now + duration
     else: 
-        end = duration - (get_now() - loop_start)
+        end = loop_start + duration
 
     while now < end:
         now = get_now()
