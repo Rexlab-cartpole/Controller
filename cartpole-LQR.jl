@@ -30,7 +30,7 @@ mp = 0.307 # mass of the pole (kg)
 
 g = 9.81
 
-h = 1/100
+h = 1/10
 
 ##
 

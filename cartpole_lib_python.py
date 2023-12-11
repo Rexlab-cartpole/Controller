@@ -80,6 +80,11 @@ def get_odrive():
     global odrv0
     return odrv0
 
+def init_odrive_no_calib():
+    global odrv0
+    
+    odrv0 = odrive.find_any()
+
 def init_odrive():
     global odrv0, last_shoulder_pos, last_linear_pos, last_state_time
 
