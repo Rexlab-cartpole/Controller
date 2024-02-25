@@ -5,12 +5,16 @@ Pkg.instantiate()
 ##
 
 using RobotZoo:Cartpole
+using RobotZoo
+using RobotDynamics
 using TrajOptPlots
 using ControlSystems
 using LinearAlgebra
 using ForwardDiff
+using SparseArrays
 using StaticArrays
 using Random
+
 
 using Plots
 using Printf
@@ -75,8 +79,8 @@ nu = 1 # number of controls
 
 # Cost weights
 # TODO: tune these! (cart position, pole angle, cart linear velocity, pole angular velocity)
-Q = collect(Diagonal([20; 20; 1; 1]));
-R = .5;
+Q = collect(Diagonal([1; 4; .5; 10]));
+R = 1;
 
 # Might need to invert some of the gains depending on rotation / translation directions of the joints
 K = dlqr(A,B,Q,R)
@@ -184,7 +188,7 @@ use_kf = true
 for k = 1:Nsim-1
     # Measure new state
     measurements = measure_state(x_lqr[k][1:2]) # Outputs length 2 vector of sensor measurements
-
+    # println(measurements)
     # Do state estimate
     if use_kf
         if k > 1
