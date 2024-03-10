@@ -20,4 +20,4 @@ while True:
         i += 1
     if cv2.waitKey(1) == ord('q'):
         break
-cv.destroyAllWindows()
+cv2.destroyAllWindows()
