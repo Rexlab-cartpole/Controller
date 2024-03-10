@@ -28,13 +28,13 @@ using Printf
 ###### Cartpole params
 #### Pole angle is measured as an offset from vertical (vertical = 0 radians) - clockwise is positive
 #### Length is distance to the center of mass and is assumed to be half the length of the pole for moment of inertia calculation
-mc = 0.4 # mass of the cart (kg)
-mp = 0.307 # mass of the pole (kg)
-ℓ = 0.352 # distance to the center of mass (meters)
+mc = 0.3 # mass of the cart (kg)
+mp = 0.366 # mass of the pole (kg)
+ℓ = 0.349 # distance to the center of mass (meters)
 
 g = 9.81
 
-h = 1/10
+h = 1/60
 
 ##
 
@@ -67,9 +67,21 @@ xg = [0; 0; 0; 0]; # position, angle, linear vel, angular vel
 
 # Linearized state and control matrices
 A = ForwardDiff.jacobian(dx->cartpole_rk4(dx, 0), xg)
-B = ForwardDiff.derivative(du->cartpole_rk4(xg, du), 0)
 display(A)
+clipboard(@sprintf "A = np.array([[%.5f, %.5f, %.5f, %.5f],
+              [%.5f, %.5f, %.5f, %.5f],
+              [%.5f, %.5f, %.5f, %.5f],
+              [%.5f, %.5f, %.5f, %.5f]])" A'...)
+
+##
+
+
+B = ForwardDiff.derivative(du->cartpole_rk4(xg, du), 0)
 display(B)
+clipboard(@sprintf "B = np.array([[%.5f],
+              [%.5f],
+              [%.5f],
+              [%.5f]])" B...)
 
 ##
 
@@ -79,11 +91,14 @@ nu = 1 # number of controls
 
 # Cost weights
 # TODO: tune these! (cart position, pole angle, cart linear velocity, pole angular velocity)
-Q = collect(Diagonal([1; 4; .5; 10]));
-R = 1;
+# Q = collect(Diagonal([1; 4; .5; 10]));
+Q = collect(Diagonal([50; 40; 30; 100]))
+R = 2;
 
 # Might need to invert some of the gains depending on rotation / translation directions of the joints
 K = dlqr(A,B,Q,R)
+
+display(K)
 
 clipboard(@sprintf "k_matrix = np.array([%.5f, %.5f, %.5f, %.5f])" K...)
 

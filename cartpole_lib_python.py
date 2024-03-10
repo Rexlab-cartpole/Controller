@@ -14,7 +14,7 @@ ODRIVE_OVERFLOW_COMP = 2**14
 UINT16_MAX = 2**16
 
 # enums for odrive states
-AXIS_ENCODER_CALIBRATION = 7
+AXIS_ENCODER_OFFSET_CALIBRATION = 7
 AXIS_STATE_CLOSED_LOOP_CONTROL = 8
 
 SHOULDER_VEL_LPF = 0.6 # higher is less filtering
@@ -41,20 +41,41 @@ shoulder_encoder = 0
 def get_rail_encoder_pos():
     global odrv0, last_encoder_val_rail, rail_encoder
 
-    encoder_val = odrv0.inc_encoder0.raw
 
-    if last_encoder_val_rail < ODRIVE_OVERFLOW_COMP and encoder_val > UINT16_MAX - ODRIVE_OVERFLOW_COMP:
-        diff = -(UINT16_MAX - encoder_val + last_encoder_val_rail)
-    elif last_encoder_val_rail > UINT16_MAX - ODRIVE_OVERFLOW_COMP and encoder_val < ODRIVE_OVERFLOW_COMP:
-        diff = UINT16_MAX - last_encoder_val_rail + encoder_val 
+    # # When using incremental encoder
+    # encoder_val = odrv0.inc_encoder0.raw
+
+    # if last_encoder_val_rail < ODRIVE_OVERFLOW_COMP and encoder_val > UINT16_MAX - ODRIVE_OVERFLOW_COMP:
+    #     diff = -(UINT16_MAX - encoder_val + last_encoder_val_rail)
+    # elif last_encoder_val_rail > UINT16_MAX - ODRIVE_OVERFLOW_COMP and encoder_val < ODRIVE_OVERFLOW_COMP:
+    #     diff = UINT16_MAX - last_encoder_val_rail + encoder_val 
+    # else:
+    #     diff = encoder_val - last_encoder_val_rail
+    
+    # last_encoder_val_rail = encoder_val
+
+    # rail_encoder -= diff
+    
+    # # return (rail_encoder * LINEAR_TO_ANGLE_RATIO) + LINEAR_OFFSET
+    # return rail_encoder * 0.11938052083 # 2*pi*r = 2*pi*(19mm) = 2*pi*0.019
+    
+    
+    # When using onboard encoder (magnetic)
+    encoder_val = odrv0.onboard_encoder0.raw
+    
+    if last_encoder_val_rail < .25 and encoder_val >= 1 - .25:
+        diff = -(1 - encoder_val + last_encoder_val_rail)
+    elif last_encoder_val_rail > 1 - .25 and encoder_val <= .25:
+        diff = 1 - last_encoder_val_rail + encoder_val
     else:
         diff = encoder_val - last_encoder_val_rail
     
     last_encoder_val_rail = encoder_val
+    
+    rail_encoder -= diff
+    
+    return rail_encoder * 0.11938052083 # 2*pi*r = 2*pi*(19mm) = 2*pi*0.019
 
-    rail_encoder -= diff 
-
-    return (rail_encoder * LINEAR_TO_ANGLE_RATIO) + LINEAR_OFFSET
 
 def get_shoulder_encoder_pos():
     global odrv0, last_encoder_val_shoulder, shoulder_encoder
@@ -92,20 +113,32 @@ def init_odrive():
     odrv0.clear_errors()
 
     odrive.utils.dump_errors(odrv0)
+    
+    
+    # When using onboard encoder (magnetic)
+    # set absolute encoder reference frame (primarily for anticogging)
+    # odrv0.axis0.pos_estimate = odrv0.onboard_encoder0.raw
+    # odrv0.axis0.config.anticogging.enabled = True
 
-    odrv0.axis0.requested_state = AXIS_ENCODER_CALIBRATION
-    time.sleep(10) #TODO: make this a loop to check if calibration is done. I'm too lazy to find the api interface for this
+    # # When using incremental encoder
+    # odrv0.axis0.requested_state = AXIS_ENCODER_OFFSET_CALIBRATION
+    # while odrv0.axis0.current_state == AXIS_ENCODER_OFFSET_CALIBRATION:
+    #     time.sleep(.1)
+    # # time.sleep(10)
 
-    odrive.utils.dump_errors(odrv0)
+    # odrive.utils.dump_errors(odrv0)
 
     odrv0.axis0.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
     time.sleep(0.5)
+    
+    # # odrv0.axis0.controller.config.control_mode = ControlMode.TORQUE_CONTROL
+    # # time.sleep(0.5)
 
-    get_shoulder_encoder_pos()
-    get_rail_encoder_pos()
-    last_state_time = time.time()
+    # get_shoulder_encoder_pos()
+    # get_rail_encoder_pos()
+    # last_state_time = time.time()
 
-    time.sleep(0.5)
+    # time.sleep(0.5)
 
     odrive.utils.dump_errors(odrv0)
     
@@ -136,7 +169,7 @@ def get_state():
     elapsed_time = time.time() - last_state_time
     if elapsed_time == 0:
         elapsed_time = .01
-        
+
     shoulder_velocity = (shoulder_pos - last_shoulder_pos) / elapsed_time
     shoulder_velocity = (shoulder_velocity * SHOULDER_VEL_LPF) + (last_shoulder_vel * (1 - SHOULDER_VEL_LPF))
 
