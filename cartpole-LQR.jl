@@ -67,11 +67,12 @@ xg = [0; 0; 0; 0]; # position, angle, linear vel, angular vel
 
 # Linearized state and control matrices
 A = ForwardDiff.jacobian(dx->cartpole_rk4(dx, 0), xg)
+# A[:,4] /= 2
 display(A)
-clipboard(@sprintf "A = np.array([[%.5f, %.5f, %.5f, %.5f],
-              [%.5f, %.5f, %.5f, %.5f],
-              [%.5f, %.5f, %.5f, %.5f],
-              [%.5f, %.5f, %.5f, %.5f]])" A'...)
+clipboard(@sprintf "A = np.array([[%.10f, %.10f, %.10f, %.10f],
+              [%.10f, %.10f, %.10f, %.10f],
+              [%.10f, %.10f, %.10f, %.10f],
+              [%.10f, %.10f, %.10f, %.10f]])" A'...)
 
 ##
 
@@ -79,9 +80,9 @@ clipboard(@sprintf "A = np.array([[%.5f, %.5f, %.5f, %.5f],
 B = ForwardDiff.derivative(du->cartpole_rk4(xg, du), 0)
 display(B)
 clipboard(@sprintf "B = np.array([[%.5f],
-              [%.5f],
-              [%.5f],
-              [%.5f]])" B...)
+              [%.10f],
+              [%.10f],
+              [%.10f]])" B...)
 
 ##
 
@@ -91,8 +92,8 @@ nu = 1 # number of controls
 
 # Cost weights
 # TODO: tune these! (cart position, pole angle, cart linear velocity, pole angular velocity)
-# Q = collect(Diagonal([1; 4; .5; 10]));
 Q = collect(Diagonal([50; 40; 30; 100]))
+# Q = collect(Diagonal([40; 40; 30; 10]))
 R = 2;
 
 # Might need to invert some of the gains depending on rotation / translation directions of the joints
@@ -100,7 +101,7 @@ K = dlqr(A,B,Q,R)
 
 display(K)
 
-clipboard(@sprintf "k_matrix = np.array([%.5f, %.5f, %.5f, %.5f])" K...)
+clipboard(@sprintf "k_matrix = np.array([%.5f, %.5f, %.5f, %.5f/2]) * .2" K...)
 
 ##
 
